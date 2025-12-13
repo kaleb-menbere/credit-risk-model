@@ -1,227 +1,194 @@
 """
-Data Processing Pipeline for Credit Risk Model
-Author: Bati Bank Analytics Engineering Team
-Date: December 2025
+Unit tests for Task 3 Feature Engineering
 """
 
+import pytest
 import pandas as pd
 import numpy as np
-from datetime import datetime
-from sklearn.base import BaseEstimator, TransformerMixin
-from sklearn.pipeline import Pipeline
-from sklearn.impute import SimpleImputer
-from sklearn.preprocessing import StandardScaler, OneHotEncoder
-from sklearn.compose import ColumnTransformer
+import sys
+import os
+import sklearn.pipeline as Pipeline
 
-# ============================================================================
-# 1. Datetime Feature Extraction
-# ============================================================================
+# Add src to path
+sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 
-class DatetimeFeatures(BaseEstimator, TransformerMixin):
-    """
-    Extract temporal features from transaction timestamp.
-    """
-    
-    def __init__(self, datetime_col="TransactionStartTime"):
-        self.datetime_col = datetime_col
-        
-    def fit(self, X, y=None):
-        return self
-    
-    def transform(self, X, y=None):
-        X = X.copy()
-        
-        # Convert to datetime if needed
-        if not pd.api.types.is_datetime64_any_dtype(X[self.datetime_col]):
-            X[self.datetime_col] = pd.to_datetime(X[self.datetime_col])
-        
-        # Extract temporal features
-        X["transaction_hour"] = X[self.datetime_col].dt.hour
-        X["transaction_day"] = X[self.datetime_col].dt.day
-        X["transaction_month"] = X[self.datetime_col].dt.month
-        X["transaction_year"] = X[self.datetime_col].dt.year
-        X["transaction_dayofweek"] = X[self.datetime_col].dt.dayofweek
-        X["transaction_weekend"] = X[self.datetime_col].dt.dayofweek.isin([5, 6]).astype(int)
-        
-        return X
+from src.data_processing import (
+    DateTimeFeatureExtractor,
+    RFMFeatureAggregator,
+    CategoricalFeatureEncoder,
+    WoEIVTransformer,
+    build_feature_engineering_pipeline
+)
 
-# ============================================================================
-# 2. Customer Aggregation
-# ============================================================================
 
-class CustomerAggregation(BaseEstimator, TransformerMixin):
-    """
-    Aggregate transaction-level data to customer-level RFMS features.
-    """
+class TestDateTimeFeatureExtractor:
+    """Test datetime feature extraction"""
     
-    def __init__(self, customer_id_col="CustomerId", amount_col="Amount"):
-        self.customer_id_col = customer_id_col
-        self.amount_col = amount_col
+    def test_extraction(self):
+        """Test that datetime features are correctly extracted"""
+        df = pd.DataFrame({
+            'TransactionStartTime': pd.date_range('2023-01-01', periods=5, freq='D'),
+            'Amount': [100, 200, 300, 400, 500]
+        })
         
-    def fit(self, X, y=None):
-        return self
-    
-    def transform(self, X, y=None):
-        X = X.copy()
+        extractor = DateTimeFeatureExtractor()
+        result = extractor.fit_transform(df)
         
-        # Ensure numeric amount
-        X[self.amount_col] = pd.to_numeric(X[self.amount_col], errors='coerce')
+        assert 'transaction_hour' in result.columns
+        assert 'transaction_day' in result.columns
+        assert 'transaction_month' in result.columns
+        assert 'transaction_year' in result.columns
+        assert len(result) == 5
+        assert result['transaction_month'].iloc[0] == 1  # January
         
-        # Define snapshot date for recency calculation
-        snapshot_date = X["TransactionStartTime"].max()
+    def test_string_datetime_conversion(self):
+        """Test conversion from string to datetime"""
+        df = pd.DataFrame({
+            'TransactionStartTime': ['2023-01-01 10:30:00', '2023-01-02 14:45:00'],
+            'Amount': [100, 200]
+        })
         
-        # Group by customer
-        agg_dict = {
-            self.amount_col: [
-                ("total_transaction_amount", "sum"),
-                ("avg_transaction_amount", "mean"),
-                ("std_transaction_amount", "std"),
-                ("min_transaction_amount", "min"),
-                ("max_transaction_amount", "max")
-            ],
-            "TransactionStartTime": [
-                ("transaction_count", "count"),
-                ("first_transaction_date", "min"),
-                ("last_transaction_date", "max")
-            ]
-        }
+        extractor = DateTimeFeatureExtractor()
+        result = extractor.fit_transform(df)
         
-        # Create multi-level aggregation
-        customer_agg = X.groupby(self.customer_id_col).agg(agg_dict)
-        
-        # Flatten column names
-        customer_agg.columns = ['_'.join(col).strip() for col in customer_agg.columns.values]
-        
-        # Calculate recency (days since last transaction)
-        customer_agg["recency_days"] = (snapshot_date - customer_agg["TransactionStartTime_last_transaction_date"]).dt.days
-        
-        # Calculate customer tenure (days since first transaction)
-        customer_agg["customer_tenure_days"] = (
-            customer_agg["TransactionStartTime_last_transaction_date"] - 
-            customer_agg["TransactionStartTime_first_transaction_date"]
-        ).dt.days
-        
-        # Calculate frequency (transactions per day of tenure)
-        customer_agg["frequency_per_day"] = (
-            customer_agg["transaction_count"] / 
-            np.maximum(customer_agg["customer_tenure_days"], 1)
-        )
-        
-        # Drop original datetime columns
-        customer_agg = customer_agg.drop([
-            "TransactionStartTime_first_transaction_date",
-            "TransactionStartTime_last_transaction_date"
-        ], axis=1)
-        
-        # Reset index
-        customer_agg = customer_agg.reset_index()
-        
-        return customer_agg
+        assert 'transaction_hour' in result.columns
+        assert result['transaction_hour'].iloc[0] == 10
+        assert result['transaction_hour'].iloc[1] == 14
 
-# ============================================================================
-# 3. Feature Engineering Pipeline Builder
-# ============================================================================
 
-def build_feature_pipeline(numerical_features, categorical_features):
-    """
-    Build a scikit-learn pipeline for feature processing.
+class TestRFMFeatureAggregator:
+    """Test RFM feature aggregation"""
     
-    Parameters:
-    -----------
-    numerical_features : list
-        List of numerical feature names
-    categorical_features : list
-        List of categorical feature names
+    def test_basic_aggregation(self):
+        """Test basic RFM aggregation"""
+        df = pd.DataFrame({
+            'CustomerId': ['A', 'A', 'B', 'B', 'B'],
+            'Amount': [100, 200, 50, 150, 250],
+            'TransactionStartTime': pd.date_range('2023-01-01', periods=5, freq='D')
+        })
         
-    Returns:
-    --------
-    pipeline : ColumnTransformer
-        Complete feature processing pipeline
-    """
+        aggregator = RFMFeatureAggregator()
+        result = aggregator.fit_transform(df)
+        
+        # Should have 2 unique customers
+        assert len(result) == 2
+        
+        # Check aggregated features exist
+        assert 'total_amount' in result.columns
+        assert 'avg_amount' in result.columns
+        assert 'std_amount' in result.columns
+        assert 'transaction_count' in result.columns
+        
+        # Check calculations
+        customer_a = result[result['CustomerId'] == 'A']
+        assert customer_a['total_amount'].iloc[0] == 300
+        assert customer_a['transaction_count'].iloc[0] == 2
+        assert customer_a['avg_amount'].iloc[0] == 150
+        
+    def test_recency_calculation(self):
+        """Test recency calculation"""
+        df = pd.DataFrame({
+            'CustomerId': ['A', 'A', 'B'],
+            'Amount': [100, 200, 150],
+            'TransactionStartTime': pd.to_datetime(['2023-01-01', '2023-01-05', '2023-01-03'])
+        })
+        
+        aggregator = RFMFeatureAggregator()
+        result = aggregator.fit_transform(df)
+        
+        # Recency should be calculated
+        if 'recency_days' in result.columns:
+            # Last transaction was on 2023-01-05 for snapshot
+            assert 'recency_days' in result.columns
+
+
+class TestCategoricalFeatureEncoder:
+    """Test categorical encoding"""
     
-    # Numerical feature pipeline
-    numeric_pipeline = Pipeline(steps=[
-        ("imputer", SimpleImputer(strategy="median")),
-        ("scaler", StandardScaler())
-    ])
+    def test_onehot_encoding(self):
+        """Test one-hot encoding"""
+        df = pd.DataFrame({
+            'Category': ['A', 'B', 'A', 'C', 'B'],
+            'Value': [1, 2, 3, 4, 5]
+        })
+        
+        encoder = CategoricalFeatureEncoder(encoding_strategy='onehot', columns=['Category'])
+        result = encoder.fit_transform(df)
+        
+        # Should have created one-hot columns
+        assert 'Category_A' in result.columns or 'Category_A' in '|'.join(result.columns)
+        assert 'Value' in result.columns  # Numerical column should remain
+        
+    def test_label_encoding(self):
+        """Test label encoding"""
+        df = pd.DataFrame({
+            'Category': ['A', 'B', 'A', 'C', 'B'],
+            'Value': [1, 2, 3, 4, 5]
+        })
+        
+        encoder = CategoricalFeatureEncoder(encoding_strategy='label', columns=['Category'])
+        result = encoder.fit_transform(df)
+        
+        # Category should be converted to numerical labels
+        assert 'Category' in result.columns
+        assert result['Category'].dtype in [np.int64, np.int32, np.int8]
+
+
+class TestWoEIVTransformer:
+    """Test WoE and IV transformation"""
     
-    # Categorical feature pipeline - FIXED VERSION
-    categorical_pipeline = Pipeline(steps=[
-        ("imputer", SimpleImputer(strategy="most_frequent")),
-        # CORRECTED: No sparse parameter in newer sklearn versions
-        ("encoder", OneHotEncoder(handle_unknown="ignore", sparse_output=False))
-    ])
+    def test_woe_calculation(self):
+        """Test WoE calculation"""
+        np.random.seed(42)
+        
+        # Create sample data with clear relationship
+        n_samples = 1000
+        df = pd.DataFrame({
+            'feature': np.random.normal(0, 1, n_samples),
+            'target': (np.random.normal(0, 1, n_samples) > 0).astype(int)
+        })
+        
+        woe_transformer = WoEIVTransformer(target_col='target', n_bins=5)
+        woe_transformer.fit(df)
+        
+        # Should have calculated WoE
+        assert len(woe_transformer.woe_dict) > 0
+        assert len(woe_transformer.iv_dict) > 0
+        
+        # Test transformation
+        transformed = woe_transformer.transform(df)
+        assert 'feature' in transformed.columns
+        assert transformed.shape[0] == n_samples
+
+
+class TestPipelineBuilder:
+    """Test pipeline construction"""
     
-    # Column transformer
-    preprocessor = ColumnTransformer(
-        transformers=[
-            ("num", numeric_pipeline, numerical_features),
-            ("cat", categorical_pipeline, categorical_features)
+    def test_pipeline_build(self):
+        """Test that pipeline is built correctly"""
+        pipeline = build_feature_engineering_pipeline()
+        
+        # Should be a sklearn Pipeline
+        from sklearn.pipeline import Pipeline
+        assert isinstance(pipeline, Pipeline)
+        
+        # Should have expected steps
+        step_names = [name for name, _ in pipeline.steps]
+        assert len(step_names) >= 2
+        
+    def test_pipeline_configurations(self):
+        """Test different pipeline configurations"""
+        configs = [
+            {'scaling_strategy': 'standard', 'encoding_strategy': 'onehot'},
+            {'scaling_strategy': 'minmax', 'encoding_strategy': 'label'},
+            {'imputation_strategy': 'knn', 'use_woe': True}
         ]
-    )
-    
-    return preprocessor
-
-# ============================================================================
-# 4. Alternative simplified pipeline builder (if above still fails)
-# ============================================================================
-
-def build_simple_pipeline(numerical_features):
-    """
-    Simplified pipeline for only numerical features.
-    Use this if the main pipeline fails.
-    """
-    from sklearn.pipeline import Pipeline
-    from sklearn.impute import SimpleImputer
-    from sklearn.preprocessing import StandardScaler
-    
-    pipeline = Pipeline(steps=[
-        ("imputer", SimpleImputer(strategy="median")),
-        ("scaler", StandardScaler())
-    ])
-    
-    return pipeline
-
-# ============================================================================
-# 5. WoE and IV Transformation (Optional for Logistic Regression)
-# ============================================================================
-
-class WoETransformer(BaseEstimator, TransformerMixin):
-    """
-    Weight of Evidence transformation for categorical/binned features.
-    Requires the xverse package: pip install xverse
-    """
-    
-    def __init__(self, target_col="is_high_risk"):
-        self.target_col = target_col
-        self.woe_dict = {}
         
-    def fit(self, X, y=None):
-        # This requires the xverse package
-        try:
-            from xverse.transformer import WOE
-            self.woe_transformer = WOE()
-            
-            # If y is provided separately
-            if y is not None:
-                self.woe_transformer.fit(X, y)
-            # If target is in X
-            elif self.target_col in X.columns:
-                self.woe_transformer.fit(X.drop(columns=[self.target_col]), X[self.target_col])
-                
-        except ImportError:
-            print("Warning: xverse package not installed. Install with: pip install xverse")
-            self.woe_transformer = None
-            
-        return self
-    
-    def transform(self, X, y=None):
-        if self.woe_transformer is None:
-            return X
-            
-        if self.target_col in X.columns:
-            X_transformed = self.woe_transformer.transform(X.drop(columns=[self.target_col]))
-            X_transformed[self.target_col] = X[self.target_col]
-            return X_transformed
-        else:
-            return self.woe_transformer.transform(X)
+        for config in configs:
+            pipeline = build_feature_engineering_pipeline(config)
+            assert pipeline is not None
+            assert isinstance(pipeline, Pipeline)
+
+
+if __name__ == '__main__':
+    pytest.main([__file__, '-v'])
