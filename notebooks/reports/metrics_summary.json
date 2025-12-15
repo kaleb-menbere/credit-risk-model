@@ -1,0 +1,139 @@
+{
+  "best_model": "RandomForest",
+  "best_model_metrics": {
+    "model_name": "RandomForest",
+    "accuracy": 0.9946595460614153,
+    "precision": 0.9983974358974359,
+    "recall": 0.9952076677316294,
+    "f1_score": 0.9968,
+    "roc_auc": 0.999818177095509,
+    "best_cv_score": 0.999927223401658,
+    "best_params": {
+      "max_depth": 10,
+      "min_samples_leaf": 4,
+      "min_samples_split": 10,
+      "n_estimators": 100
+    },
+    "feature_importance": {
+      "transaction_count": 0.22082645638774587,
+      "total_amount": 0.03397883020969124,
+      "avg_amount": 0.033462501792385045,
+      "amount_std": 0.05297018475053722,
+      "recency_days": 0.0034668998379489965,
+      "customer_tenure_days": 0.0850745348195044,
+      "frequency_per_day": 0.022742706578845338,
+      "high_risk_channel_use": 0.010149144397478296,
+      "high_fraud_hour_ratio": 0.1459050918601771,
+      "amount_cv": 0.3914236493656866
+    }
+  },
+  "training_timestamp": "2025-12-15T18:45:12.345413",
+  "data_summary": {
+    "total_customers": 3742,
+    "train_samples": 2993,
+    "test_samples": 749,
+    "feature_count": 10,
+    "class_distribution": {
+      "1": 3125,
+      "0": 617
+    }
+  },
+  "model_performance": [
+    {
+      "model_name": "RandomForest",
+      "accuracy": 0.9946595460614153,
+      "precision": 0.9983974358974359,
+      "recall": 0.9952076677316294,
+      "f1_score": 0.9968,
+      "roc_auc": 0.999818177095509,
+      "best_cv_score": 0.999927223401658,
+      "best_params": {
+        "max_depth": 10,
+        "min_samples_leaf": 4,
+        "min_samples_split": 10,
+        "n_estimators": 100
+      },
+      "feature_importance": {
+        "transaction_count": 0.22082645638774587,
+        "total_amount": 0.03397883020969124,
+        "avg_amount": 0.033462501792385045,
+        "amount_std": 0.05297018475053722,
+        "recency_days": 0.0034668998379489965,
+        "customer_tenure_days": 0.0850745348195044,
+        "frequency_per_day": 0.022742706578845338,
+        "high_risk_channel_use": 0.010149144397478296,
+        "high_fraud_hour_ratio": 0.1459050918601771,
+        "amount_cv": 0.3914236493656866
+      }
+    },
+    {
+      "model_name": "GradientBoosting",
+      "accuracy": 0.9973297730307076,
+      "precision": 0.9968152866242038,
+      "recall": 1.0,
+      "f1_score": 0.9984051036682615,
+      "roc_auc": 0.9996493415413388,
+      "best_cv_score": 0.9998019296477928,
+      "best_params": {
+        "learning_rate": 0.1,
+        "max_depth": 7,
+        "n_estimators": 200,
+        "subsample": 0.8
+      },
+      "feature_importance": {
+        "transaction_count": 1.0784337857444682e-05,
+        "total_amount": 0.05782477233697122,
+        "avg_amount": 0.05745415291472262,
+        "amount_std": 1.7172192283140257e-05,
+        "recency_days": 0.0013840569621755773,
+        "customer_tenure_days": 0.0005222894727381767,
+        "frequency_per_day": 0.00583117451805849,
+        "high_risk_channel_use": 0.03958883831304464,
+        "high_fraud_hour_ratio": 0.24444202736970017,
+        "amount_cv": 0.5929247315824486
+      }
+    },
+    {
+      "model_name": "DecisionTree",
+      "accuracy": 0.9946595460614153,
+      "precision": 0.9983974358974359,
+      "recall": 0.9952076677316294,
+      "f1_score": 0.9968,
+      "roc_auc": 0.9958570352476688,
+      "best_cv_score": 0.998953259270551,
+      "best_params": {
+        "max_depth": 10,
+        "min_samples_leaf": 4,
+        "min_samples_split": 2
+      },
+      "feature_importance": {
+        "transaction_count": 0.0,
+        "total_amount": 0.039353252576759284,
+        "avg_amount": 0.0013114557653025225,
+        "amount_std": 0.0,
+        "recency_days": 0.0,
+        "customer_tenure_days": 0.0,
+        "frequency_per_day": 0.0008946551985868984,
+        "high_risk_channel_use": 0.014271659865933619,
+        "high_fraud_hour_ratio": 0.12659112724369204,
+        "amount_cv": 0.8175778493497257
+      }
+    },
+    {
+      "model_name": "LogisticRegression",
+      "accuracy": 0.965287049399199,
+      "precision": 0.9966887417218543,
+      "recall": 0.9616613418530351,
+      "f1_score": 0.9788617886178862,
+      "roc_auc": 0.98911660043118,
+      "best_cv_score": 0.991218496692416,
+      "best_params": {
+        "C": 100,
+        "max_iter": 1000,
+        "penalty": "l2",
+        "solver": "liblinear"
+      },
+      "feature_importance": null
+    }
+  ]
+}
