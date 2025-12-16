@@ -1,0 +1,62 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual environments
+.venv/
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Data files
+data/raw/
+data/processed/  # Except metadata
+!data/processed/task3_metadata.json
+!data/processed/task3_feature_names.txt
+!data/processed/task3_metadata.json
+
+# Model files (large binary files)
+models/*.pkl
+models/*.joblib
+!models/task3_feature_pipeline.pkl
+!models/task3_preprocessor.pkl
+
+# MLflow
+mlruns/
+
+# Jupyter Notebook
+.ipynb_checkpoints/
+
+# Logs
+*.log
+
+# OS
+.DS_Store
+Thumbs.db

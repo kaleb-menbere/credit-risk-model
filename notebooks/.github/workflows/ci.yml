@@ -1,0 +1,254 @@
+name: Credit Risk Model CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Deployment environment'
+        required: true
+        default: 'staging'
+        type: choice
+        options:
+        - staging
+        - production
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: [3.9]
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ matrix.python-version }}
+
+    - name: Cache dependencies
+      uses: actions/cache@v3
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}
+        restore-keys: |
+          ${{ runner.os }}-pip-
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+
+    - name: Lint with flake8
+      run: |
+        flake8 src tests --count --select=E9,F63,F7,F82 --show-source --statistics
+        flake8 src tests --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
+
+    - name: Format check with black
+      run: |
+        black --check src tests
+
+    - name: Type check with mypy
+      run: |
+        mypy src --ignore-missing-imports
+
+    - name: Run unit tests with coverage
+      run: |
+        pytest tests/ -v --cov=src --cov-report=xml --cov-report=html
+
+    - name: Upload coverage to Codecov
+      uses: codecov/codecov-action@v3
+      with:
+        file: ./coverage.xml
+        flags: unittests
+
+    - name: Test API models
+      run: |
+        python -c "
+        import sys
+        sys.path.append('src')
+        from api.pydantic_models import PredictionRequest, PredictionResponse, HealthResponse
+        from datetime import datetime
+        
+        # Test PredictionRequest
+        sample_request = {
+            'transaction_count': 10.0,
+            'total_amount': 1000.0,
+            'avg_amount': 100.0,
+            'amount_std': 50.0,
+            'recency_days': 5.0,
+            'customer_tenure_days': 30.0,
+            'frequency_per_day': 0.33,
+            'high_risk_channel_use': 0.0,
+            'high_fraud_hour_ratio': 0.1,
+            'amount_cv': 0.5
+        }
+        
+        request = PredictionRequest(**sample_request)
+        print('✅ PredictionRequest validation passed')
+        
+        # Test PredictionResponse
+        response_data = {
+            'customer_id': 'test123',
+            'prediction': 1,
+            'probability': 0.85,
+            'risk_level': 'high',
+            'message': 'Test prediction'
+        }
+        
+        response = PredictionResponse(**response_data)
+        print('✅ PredictionResponse validation passed')
+        
+        # Test HealthResponse
+        health = HealthResponse(
+            status='healthy',
+            message='API is running',
+            version='1.0.0'
+        )
+        print('✅ HealthResponse validation passed')
+        print('🎉 All API model tests passed successfully!')
+        "
+
+  build:
+    runs-on: ubuntu-latest
+    needs: test
+    if: github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Log in to Docker Hub
+      uses: docker/login-action@v3
+      with:
+        username: ${{ secrets.DOCKER_USERNAME }}
+        password: ${{ secrets.DOCKER_PASSWORD }}
+
+    - name: Extract metadata for Docker
+      id: meta
+      uses: docker/metadata-action@v5
+      with:
+        images: ${{ secrets.DOCKER_USERNAME }}/credit-risk-api
+        tags: |
+          type=ref,event=branch
+          type=ref,event=pr
+          type=semver,pattern={{version}}
+          type=semver,pattern={{major}}.{{minor}}
+          type=sha,prefix={{branch}}-
+          type=raw,value=latest,enable={{is_default_branch}}
+
+    - name: Build and push Docker image
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        push: ${{ github.ref == 'refs/heads/main' }}
+        tags: ${{ steps.meta.outputs.tags }}
+        labels: ${{ steps.meta.outputs.labels }}
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+
+  deploy-staging:
+    runs-on: ubuntu-latest
+    needs: [test, build]
+    if: github.ref == 'refs/heads/main'
+    environment: staging
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Deploy to staging
+      run: |
+        echo "🚀 Deploying to staging environment..."
+        echo "📦 Docker Image: ${{ secrets.DOCKER_USERNAME }}/credit-risk-api:latest"
+        # Add your actual deployment commands here
+        # Example: kubectl apply -f k8s/staging/
+        # or: docker-compose -f docker-compose.staging.yml up -d
+
+    - name: Run smoke tests
+      run: |
+        echo "🧪 Running smoke tests..."
+        # Add smoke test commands
+        # Example: curl -f http://staging-api.example.com/health
+
+  deploy-production:
+    runs-on: ubuntu-latest
+    needs: [test, build, deploy-staging]
+    if: github.ref == 'refs/heads/main' && github.event.inputs.environment == 'production'
+    environment: production
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Deploy to production
+      run: |
+        echo "🚀 Deploying to production environment..."
+        echo "⚠ THIS IS A PRODUCTION DEPLOYMENT ⚠"
+        # Add your production deployment commands here
+
+  create-release:
+    runs-on: ubuntu-latest
+    needs: [test, build]
+    if: github.ref == 'refs/heads/main'
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Create GitHub Release
+      uses: softprops/action-gh-release@v1
+      with:
+        tag_name: v${{ github.run_number }}
+        name: Release v${{ github.run_number }}
+        body: |
+          ## 🚀 Credit Risk Model Release v${{ github.run_number }}
+          
+          **Changes:**
+          - Automated model deployment
+          - CI/CD pipeline improvements
+          - API enhancements
+          
+          **Artifacts:**
+          - Docker Image: `${{ secrets.DOCKER_USERNAME }}/credit-risk-api:v${{ github.run_number }}`
+          - Test Coverage: See Codecov report
+          - MLflow Experiments: Model registry updated
+          
+          **Deployment Status:** ✅ All tests passed
+        draft: false
+        prerelease: false
+
+  notify:
+    runs-on: ubuntu-latest
+    needs: [test, build, create-release]
+    if: always()
+    
+    steps:
+    - name: Notify Slack on failure
+      if: failure()
+      uses: 8398a7/action-slack@v3
+      with:
+        status: failure
+        channel: '#ci-cd'
+        text: '❌ CI/CD Pipeline Failed for Credit Risk Model'
+      env:
+        SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+
+    - name: Notify Slack on success
+      if: success()
+      uses: 8398a7/action-slack@v3
+      with:
+        status: success
+        channel: '#ci-cd'
+        text: '✅ CI/CD Pipeline Succeeded for Credit Risk Model'
+      env:
+        SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
