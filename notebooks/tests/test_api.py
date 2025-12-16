@@ -1,73 +1,51 @@
-"""
-API tests for FastAPI application - Updated for notebooks/tests location
-"""
-
+# test_complete_api.py
+import requests
+import json
 import pytest
-import sys
-import os
-from pathlib import Path
 
-# Get the current file path
-current_file = Path(__file__).resolve()
-
-# Navigate from notebooks/tests to project root
-# notebooks/tests/test_api.py -> notebooks -> project root
-project_root = current_file.parent.parent.parent  # Go up three levels
-sys.path.insert(0, str(project_root))
-
-# Also add src directory to path
-src_dir = project_root / "src"
-sys.path.insert(0, str(src_dir))
-
-print(f"Project root: {project_root}")
-print(f"Python path: {sys.path}")
-
-from fastapi.testclient import TestClient
-
-# Try to import the app
-try:
-    # Try absolute import
-    from src.api.main import app
-    print("✅ Imported using 'from src.api.main import app'")
-except ImportError:
-    try:
-        # Try relative import
-        import importlib.util
-        module_path = project_root / "src" / "api" / "main.py"
-        spec = importlib.util.spec_from_file_location("main_module", str(module_path))
-        main_module = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(main_module)
-        app = main_module.app
-        print("✅ Imported using importlib")
-    except Exception as e:
-        print(f"❌ Failed to import: {e}")
-        # Create a mock app for testing
-        from fastapi import FastAPI
-        app = FastAPI()
-        @app.get("/")
-        def root():
-            return {"message": "Mock app for testing"}
-
-client = TestClient(app)
+BASE_URL = "http://localhost:8000"
 
 def test_root_endpoint():
-    """Test root endpoint"""
-    response = client.get("/")
+    """Test the root endpoint"""
+    response = requests.get(f"{BASE_URL}/")
     assert response.status_code == 200
     data = response.json()
-    assert "message" in data
+    assert "api" in data
+    assert "status" in data
+    assert data["status"] == "active"
     print("✅ Root endpoint test passed")
 
 def test_health_endpoint():
-    """Test health endpoint"""
-    response = client.get("/health")
+    """Test the health endpoint"""
+    response = requests.get(f"{BASE_URL}/health")
     assert response.status_code == 200
+    data = response.json()
+    assert "status" in data
+    assert "model_loaded" in data
     print("✅ Health endpoint test passed")
 
+def test_features_endpoint():
+    """Test the features endpoint"""
+    response = requests.get(f"{BASE_URL}/features")
+    assert response.status_code == 200
+    data = response.json()
+    assert "features" in data
+    assert "count" in data
+    assert data["count"] == 10  # Should have 10 features
+    print("✅ Features endpoint test passed")
+
+def test_model_info_endpoint():
+    """Test the model info endpoint"""
+    response = requests.get(f"{BASE_URL}/model/info")
+    assert response.status_code == 200
+    data = response.json()
+    assert "model_type" in data
+    print("✅ Model info endpoint test passed")
+
 def test_predict_endpoint():
-    """Test single prediction endpoint"""
+    """Test the prediction endpoint with valid data"""
     test_data = {
-        "customer_id": "test_customer_001",
+        "customer_id": "CUST_TEST_001",
         "transaction_count": 50.0,
         "total_amount": 10000.0,
         "avg_amount": 200.0,
@@ -80,13 +58,76 @@ def test_predict_endpoint():
         "amount_cv": 0.25
     }
     
-    response = client.post("/predict", json=test_data)
-    # Accept multiple status codes
-    assert response.status_code in [200, 503, 404, 422]
-    print(f"✅ Predict endpoint test passed with status {response.status_code}")
+    response = requests.post(f"{BASE_URL}/predict", json=test_data)
+    assert response.status_code in [200, 503]  # 200 if model loaded, 503 if not
+    
+    if response.status_code == 200:
+        data = response.json()
+        assert "prediction" in data
+        assert "probability" in data
+        assert "risk_level" in data
+        assert data["probability"] >= 0
+        assert data["probability"] <= 1
+        assert data["risk_level"] in ["low", "high"]
+        print("✅ Predict endpoint test passed with valid data")
+    else:
+        print("⚠ Predict endpoint returned 503 (model not loaded)")
+
+def test_predict_invalid_data():
+    """Test prediction with invalid data"""
+    invalid_data = {
+        "transaction_count": -50.0,  # Invalid: should be >= 0
+        "total_amount": 10000.0,
+        "avg_amount": 200.0,
+        "amount_std": 50.0,
+        "recency_days": 5.0,
+        "customer_tenure_days": 365.0,
+        "frequency_per_day": 0.14,
+        "high_risk_channel_use": 2.0,
+        "high_fraud_hour_ratio": 2.0,  # Invalid: should be <= 1
+        "amount_cv": 0.25
+    }
+    
+    response = requests.post(f"{BASE_URL}/predict", json=invalid_data)
+    # Should return 422 for validation error
+    assert response.status_code == 422
+    print("✅ Predict endpoint correctly rejected invalid data")
+
+def run_all_tests():
+    """Run all tests"""
+    print("🧪 Running comprehensive API tests...")
+    print("=" * 50)
+    
+    tests = [
+        test_root_endpoint,
+        test_health_endpoint,
+        test_features_endpoint,
+        test_model_info_endpoint,
+        test_predict_endpoint,
+        test_predict_invalid_data
+    ]
+    
+    passed = 0
+    failed = 0
+    
+    for test in tests:
+        try:
+            test()
+            passed += 1
+        except Exception as e:
+            print(f"❌ {test.__name__} failed: {e}")
+            failed += 1
+    
+    print("=" * 50)
+    print(f"📊 Test Results: {passed} passed, {failed} failed")
+    
+    if failed == 0:
+        print("🎉 All tests passed! API is ready for production.")
+    else:
+        print("⚠ Some tests failed. Check the API implementation.")
+    
+    return failed == 0
 
 if __name__ == "__main__":
-    test_root_endpoint()
-    test_health_endpoint()
-    test_predict_endpoint()
-    print("🎉 All tests passed!")
+    success = run_all_tests()
+    exit(0 if success else 1)
