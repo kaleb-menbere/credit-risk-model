@@ -207,8 +207,5 @@ Phone: +256 976 957 649
 Email: analytics@batibank.co.ug  
 GitHub: [@kalebmenebere](https://github.com/kaleb-menebere)
 
-### Repository:
-This project is maintained at: `https://github.com/batibank/credit-risk-model`
-
 ### License:
 This implementation is proprietary to Bati Bank and its e-commerce partner. Unauthorized distribution prohibited.
